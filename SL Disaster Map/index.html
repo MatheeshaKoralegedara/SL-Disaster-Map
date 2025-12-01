@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sri Lanka Flood Map - Cyclone Ditwah</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow:hidden; }
+    #map { position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; }
+
+    .header {
+        position:absolute; top:10px; left:50%; transform:translateX(-50%);
+        background: rgba(255,255,255,0.95); padding:15px 25px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.2);
+        z-index:1000; text-align:center; max-width:90%;
+    }
+    .header h1 { font-size:1.5rem; color:#c0392b; margin-bottom:5px; }
+    .header p { font-size:0.9rem; color:#555; }
+
+    .controls {
+        position:absolute; top:120px; right:10px; background:white; padding:15px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.2); z-index:1000; max-width:250px;
+    }
+    .controls h3 { margin-bottom:10px; font-size:1rem; color:#333; border-bottom:2px solid #3498db; padding-bottom:5px; }
+    .layer-toggle, .mode-toggle { margin:8px 0; display:flex; align-items:center; cursor:pointer; }
+    .layer-toggle input, .mode-toggle button { margin-right:8px; cursor:pointer; }
+    .layer-toggle label { font-size:0.9rem; flex:1; cursor:pointer; }
+
+    .flood-icon { background:#3498db; opacity:0.6; width:20px;height:20px;border-radius:3px; }
+    .roadblock-icon { background:#e74c3c; width:20px;height:20px;border-radius:3px; }
+    .landslide-icon { background:#f39c12; width:20px;height:20px;border-radius:3px; }
+    .shelter-icon { background:#27ae60; width:20px;height:20px;border-radius:3px; }
+
+    .legend {
+        position:absolute; bottom:30px; left:10px; background:white; padding:15px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.2); z-index:1000; max-width:200px;
+    }
+    .legend h4 { margin-bottom:10px; font-size:0.95rem; color:#333; }
+    .legend-item { display:flex; align-items:center; margin:5px 0; font-size:0.85rem; }
+    .legend-color { width:20px;height:20px;margin-right:8px;border-radius:3px;border:1px solid #ccc; }
+
+    .leaflet-popup-content-wrapper { border-radius:8px; }
+    .popup-content h3 { color:#2c3e50; margin-bottom:8px; font-size:1.1rem; }
+    .popup-content p { margin:5px 0; font-size:0.9rem; color:#555; }
+    .popup-content .severity { display:inline-block; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:0.85rem; }
+    .severity-high { background:#e74c3c; color:white; }
+    .severity-medium { background:#f39c12; color:white; }
+    .severity-low { background:#27ae60; color:white; }
+
+    .form-input, .form-select, .form-button {
+        width: 100%; margin:5px 0; padding:5px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;
+    }
+    .form-button { background:#3498db; color:white; cursor:pointer; border:none; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🌊 Sri Lanka Flood Emergency Map</h1>
+    <p>Cyclone Ditwah - Real-time Updates</p>
+</div>
+
+<div class="controls">
+    <h3>Layer Controls</h3>
+    <div class="layer-toggle">
+        <input type="checkbox" id="toggle-flood" checked>
+        <label for="toggle-flood"><span class="layer-icon flood-icon"></span>Flooded Areas</label>
+    </div>
+    <div class="layer-toggle">
+        <input type="checkbox" id="toggle-roadblock" checked>
+        <label for="toggle-roadblock"><span class="layer-icon roadblock-icon"></span>Road Blocks</label>
+    </div>
+    <div class="layer-toggle">
+        <input type="checkbox" id="toggle-landslide" checked>
+        <label for="toggle-landslide"><span class="layer-icon landslide-icon"></span>Landslides</label>
+    </div>
+    <div class="layer-toggle">
+        <input type="checkbox" id="toggle-shelter" checked>
+        <label for="toggle-shelter"><span class="layer-icon shelter-icon"></span>Safe Shelters</label>
+    </div>
+
+    <h3>Mode</h3>
+    <div class="mode-toggle">
+        <button id="viewModeBtn">View Mode</button>
+        <button id="reportModeBtn">Report Mode</button>
+    </div>
+</div>
+
+<div class="legend">
+    <h4>Legend</h4>
+    <div class="legend-item"><div class="legend-color flood-icon"></div><span>Flooded Area</span></div>
+    <div class="legend-item"><div class="legend-color roadblock-icon"></div><span>Road Block</span></div>
+    <div class="legend-item"><div class="legend-color landslide-icon"></div><span>Landslide</span></div>
+    <div class="legend-item"><div class="legend-color shelter-icon"></div><span>Shelter</span></div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+    // Initialize map
+    const map = L.map('map').setView([7.8731, 80.7718], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom:19 }).addTo(map);
+
+    // Layers
+    const floodLayer = L.layerGroup().addTo(map);
+    const roadblockLayer = L.layerGroup().addTo(map);
+    const landslideLayer = L.layerGroup().addTo(map);
+    const shelterLayer = L.layerGroup().addTo(map);
+
+    // Disaster icons
+    const roadblockIcon = L.icon({ iconUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="#e74c3c"/><path d="M10 16 L22 16 M16 10 L16 22" stroke="white" stroke-width="3"/></svg>'), iconSize:[32,32], iconAnchor:[16,16] });
+    const landslideIcon = L.icon({ iconUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><polygon points="16,4 28,28 4,28" fill="#f39c12"/><text x="16" y="22" text-anchor="middle" fill="white" font-size="16" font-weight="bold">!</text></svg>'), iconSize:[32,32], iconAnchor:[16,32] });
+    const shelterIcon = L.icon({ iconUrl:'data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M16 4 L28 14 L26 14 L26 28 L6 28 L6 14 L4 14 Z" fill="#27ae60"/><rect x="12" y="18" width="8" height="10" fill="white"/></svg>'), iconSize:[32,32], iconAnchor:[16,32] });
+
+    // Example: Load existing data from Google Sheet (replace YOUR_JSON_URL)
+    fetch('https://script.google.com/macros/s/AKfycbwfLeJJV4KW8ZC0BlwpIyqx-APRBWGHWXkK2PTOAX_M/dev ')
+        .then(res => res.json())
+        .then(data => {
+            data.forEach(item => {
+                const latlng = [item.lat, item.lng];
+                const popupContent = `<div class="popup-content">
+                    <h3>${item.name}</h3>
+                    <p><strong>Type:</strong> ${item.type}</p>
+                    <p><strong>Severity:</strong> ${item.severity}</p>
+                    <p><strong>Notes:</strong> ${item.notes || 'N/A'}</p>
+                    <p><strong>Updated:</strong> ${item.timestamp}</p>
+                </div>`;
+                if(item.type==='flood') L.marker(latlng).bindPopup(popupContent).addTo(floodLayer);
+                else if(item.type==='roadblock') L.marker(latlng,{icon:roadblockIcon}).bindPopup(popupContent).addTo(roadblockLayer);
+                else if(item.type==='landslide') L.marker(latlng,{icon:landslideIcon}).bindPopup(popupContent).addTo(landslideLayer);
+                else if(item.type==='shelter') L.marker(latlng,{icon:shelterIcon}).bindPopup(popupContent).addTo(shelterLayer);
+            });
+        });
+
+    // Layer toggles
+    document.getElementById('toggle-flood').addEventListener('change', e => e.target.checked ? map.addLayer(floodLayer) : map.removeLayer(floodLayer));
+    document.getElementById('toggle-roadblock').addEventListener('change', e => e.target.checked ? map.addLayer(roadblockLayer) : map.removeLayer(roadblockLayer));
+    document.getElementById('toggle-landslide').addEventListener('change', e => e.target.checked ? map.addLayer(landslideLayer) : map.removeLayer(landslideLayer));
+    document.getElementById('toggle-shelter').addEventListener('change', e => e.target.checked ? map.addLayer(shelterLayer) : map.removeLayer(shelterLayer));
+
+    // Mode buttons
+    let reportEnabled = false;
+    document.getElementById('viewModeBtn').addEventListener('click', ()=>{ reportEnabled=false; alert('View Mode Enabled'); });
+    document.getElementById('reportModeBtn').addEventListener('click', ()=>{ reportEnabled=true; alert('Report Mode Enabled. Click map to report.'); });
+
+    // Click-to-report
+    map.on('click', e=>{
+        if(!reportEnabled) return;
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+        const popup = L.popup()
+            .setLatLng(e.latlng)
+            .setContent(`
+                <div>
+                    <b>Report Disaster</b><br>
+                    <input class="form-input" id="nameInput" placeholder="Location Name"><br>
+                    <select class="form-select" id="typeInput">
+                        <option value="flood">Flood</option>
+                        <option value="roadblock">Roadblock</option>
+                        <option value="landslide">Landslide</option>
+                        <option value="shelter">Shelter</option>
+                    </select><br>
+                    <select class="form-select" id="severityInput">
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select><br>
+                    <input class="form-input" id="notesInput" placeholder="Notes"><br>
+                    <button class="form-button" id="submitBtn">Submit</button>
+                </div>
+            `).openOn(map);
+
+        setTimeout(()=>{
+            document.getElementById('submitBtn').addEventListener('click', ()=>{
+                const name = document.getElementById('nameInput').value;
+                const type = document.getElementById('typeInput').value;
+                const severity = document.getElementById('severityInput').value;
+                const notes = document.getElementById('notesInput').value;
+                if(!name){ alert('Enter location name'); return; }
+
+                // POST to Google Sheet Web App
+                fetch('https://script.google.com/macros/s/AKfycbwfLeJJV4KW8ZC0BlwpIyqx-APRBWGHWXkK2PTOAX_M/dev',{
+                    method:'POST',
+                    body: JSON.stringify({lat,lng,name,type,severity,notes}),
+                    headers:{'Content-Type':'application/json'}
+                }).then(res=>res.text()).then(resp=>{
+                    alert('Report submitted!');
+                    map.closePopup();
+                    // Optionally: Add marker immediately
+                    let marker;
+                    const popupContent = `<div class="popup-content"><h3>${name}</h3><p><strong>Type:</strong>${type}</p><p><strong>Severity:</strong>${severity}</p><p><strong>Notes:</strong>${notes}</p><p>Just Reported</p></div>`;
+                    if(type==='flood') marker=L.marker([lat,lng]).bindPopup(popupContent).addTo(floodLayer);
+                    else if(type==='roadblock') marker=L.marker([lat,lng],{icon:roadblockIcon}).bindPopup(popupContent).addTo(roadblockLayer);
+                    else if(type==='landslide') marker=L.marker([lat,lng],{icon:landslideIcon}).bindPopup(popupContent).addTo(landslideLayer);
+                    else if(type==='shelter') marker=L.marker([lat,lng],{icon:shelterIcon}).bindPopup(popupContent).addTo(shelterLayer);
+                }).catch(err=>{ console.error(err); alert('Error submitting report'); });
+            });
+        },100);
+    });
+</script>
+</body>
+</html>
